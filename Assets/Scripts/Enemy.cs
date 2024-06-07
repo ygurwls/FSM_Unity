@@ -10,6 +10,7 @@ public class Enemy : MonoBehaviour
         Move,
         Attack,
         Return,
+        Frozen,
         Damaged,
         Die
     }
@@ -19,17 +20,23 @@ public class Enemy : MonoBehaviour
     // Player의 Transform
     Transform player;
     // 적 인지 범위
-    public float IdealRange = 8;
+    public float IdealRange = 8f;
     // 공격 사거리
-    public float AttackRange = 2;
+    public float AttackRange = 2f;
     // 이동 속력
-    public float Speed = 2;
+    public float Speed = 2f;
     // 공격 딜레이
-    public float attackDelay = 1;
+    public float attackDelay = 1f;
     // 누적 시간
-    float currTime = 0;
+    float currTime = 0f;
     // 공격력
-    public float atk = 10;
+    public float atk = 10f;
+    // 최대이동범위
+    public float maxMoveDistance = 20f;
+    // 초기 위치값
+    Vector3 originPos;
+    // 현재 체력
+    float currentHealth = 100f;
 
     // Start is called before the first frame update
     void Start()
@@ -37,6 +44,8 @@ public class Enemy : MonoBehaviour
         enemyState = EnemyState.Idle;
         
         player = GameObject.Find("Player").transform;
+
+        originPos = transform.position;
     }
 
     // Update is called once per frame
@@ -55,6 +64,9 @@ public class Enemy : MonoBehaviour
                 break;
             case EnemyState.Return:
                 Return();
+                break;
+            case EnemyState.Frozen:
+                Frozen();
                 break;
             case EnemyState.Damaged:
                 Damaged();
@@ -79,6 +91,12 @@ public class Enemy : MonoBehaviour
 
     void Move()
     {
+        if(Vector3.Distance(transform.position, player.position) > maxMoveDistance)
+        {
+            enemyState = EnemyState.Return;
+            print("State: Move->Return");
+        }
+
         float dist = Vector3.Distance(transform.position, player.position);
         if(dist < AttackRange)
         {
@@ -103,8 +121,16 @@ public class Enemy : MonoBehaviour
             if(currTime > attackDelay)
             {
                 print("Attack");
-                player.GetComponent<PlayerController>().TakeDamage(atk);
-                currTime = 0;
+                if (player != null)
+                {
+                    PlayerController PC = player.GetComponent<PlayerController>();
+
+                    if (PC != null)
+                    {
+                        PC.TakeDamage(atk);
+                    }
+                    currTime = 0;
+                }
             }
         }
         else
@@ -116,16 +142,77 @@ public class Enemy : MonoBehaviour
 
     void Return()
     {
+        float dist = Vector3.Distance(transform.position, originPos);
 
+        if (dist > 0.1f)
+        {
+            Vector3 dir = originPos - transform.position;
+            dir.Normalize();
+            transform.position += dir * Speed * Time.deltaTime;
+        }
+        else
+        {
+            enemyState = EnemyState.Idle;
+            print("State: Return->Idle");
+        }
+    }
+
+    void Frozen()
+    {
+        StartCoroutine(DamagedCoroutine());
+        print("State: Frozen->Move");
+        enemyState = EnemyState.Move;
     }
 
     void Damaged()
     {
+        enemyState = EnemyState.Frozen;
+        print("State: Damaged->Frozen");
+    }
 
+    IEnumerator DamagedCoroutine()
+    {
+
+        float originalSpeed = Speed;
+        Speed = 0f;
+
+        yield return new WaitForSeconds(1f);
+
+        Speed = originalSpeed;
     }
 
     void Die()
     {
-
+        Destroy(gameObject);
     }
+
+    public void TakeDamage(float damage)
+    {
+        currentHealth -= damage;
+        if (currentHealth <= 0)
+        {
+            print("State: AnyState -> Die");
+            Die();
+        }
+        else
+        {
+            enemyState = EnemyState.Damaged;
+            print("State: AnyState -> Damaged");
+            print("EnemyCurrentHealth = " + currentHealth);
+            Damaged();
+        }
+    }
+
+    void OnDrawGizmos()
+    {
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, IdealRange);
+
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, AttackRange);
+
+        Gizmos.color = Color.green;
+        Gizmos.DrawWireSphere(transform.position, maxMoveDistance);
+    }
+
 }
