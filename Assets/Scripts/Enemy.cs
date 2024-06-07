@@ -46,6 +46,12 @@ public class Enemy : MonoBehaviour
         player = GameObject.Find("Player").transform;
 
         originPos = transform.position;
+
+        // µð¹ö±ë¿ë
+        enemyState = EnemyState.Idle;
+        player = GameObject.Find("Player").transform;
+        originPos = transform.position;
+
     }
 
     // Update is called once per frame
@@ -77,6 +83,7 @@ public class Enemy : MonoBehaviour
             default:
                 break;
         }
+
     }
 
     void Idle()
@@ -214,5 +221,4 @@ public class Enemy : MonoBehaviour
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(transform.position, maxMoveDistance);
     }
-
 }
