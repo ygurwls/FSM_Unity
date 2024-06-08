@@ -9,7 +9,7 @@ public class Enemy : MonoBehaviour
         Idle,
         Move,
         Attack,
-        Return,
+        BackToHome,
         Frozen,
         Damaged,
         Die
@@ -25,6 +25,8 @@ public class Enemy : MonoBehaviour
     public float AttackRange = 2f;
     // 이동 속력
     public float Speed = 2f;
+    // 회전 속력
+    public float rotSpeed = 2f;
     // 공격 딜레이
     public float attackDelay = 1f;
     // 누적 시간
@@ -37,6 +39,8 @@ public class Enemy : MonoBehaviour
     Vector3 originPos;
     // 현재 체력
     float currentHealth = 100f;
+    //
+    Animator anim;
 
     // Start is called before the first frame update
     void Start()
@@ -47,11 +51,7 @@ public class Enemy : MonoBehaviour
 
         originPos = transform.position;
 
-        // 디버깅용
-        enemyState = EnemyState.Idle;
-        player = GameObject.Find("Player").transform;
-        originPos = transform.position;
-
+        anim = GetComponent<Animator>();
     }
 
     // Update is called once per frame
@@ -68,8 +68,8 @@ public class Enemy : MonoBehaviour
             case EnemyState.Attack:
                 Attack();
                 break;
-            case EnemyState.Return:
-                Return();
+            case EnemyState.BackToHome:
+                BackToHome();
                 break;
             case EnemyState.Frozen:
                 Frozen();
@@ -93,6 +93,7 @@ public class Enemy : MonoBehaviour
         {
             enemyState = EnemyState.Move;
             print("State: Idle->Move");
+            anim.SetBool("IsMoving", true);
         }
     }
 
@@ -100,7 +101,7 @@ public class Enemy : MonoBehaviour
     {
         if(Vector3.Distance(transform.position, player.position) > maxMoveDistance)
         {
-            enemyState = EnemyState.Return;
+            enemyState = EnemyState.BackToHome;
             print("State: Move->Return");
         }
 
@@ -109,6 +110,7 @@ public class Enemy : MonoBehaviour
         {
             enemyState = EnemyState.Attack;
             print("State: Move->Attack");
+            anim.SetBool("IsAttack", true);
         }
         else
         {
@@ -116,6 +118,9 @@ public class Enemy : MonoBehaviour
             dir.Normalize();
 
             transform.position += dir * Speed * Time.deltaTime;
+
+            Quaternion rotation = Quaternion.LookRotation(dir);
+            transform.rotation = Quaternion.Slerp(transform.rotation, rotation, rotSpeed * Time.fixedDeltaTime);
         }
     }
 
@@ -144,10 +149,11 @@ public class Enemy : MonoBehaviour
         {
             enemyState = EnemyState.Move;
             print("State: Attack->Move");
+            anim.SetBool("IsAttack", false);
         }
     }
 
-    void Return()
+    void BackToHome()
     {
         float dist = Vector3.Distance(transform.position, originPos);
 
@@ -156,11 +162,14 @@ public class Enemy : MonoBehaviour
             Vector3 dir = originPos - transform.position;
             dir.Normalize();
             transform.position += dir * Speed * Time.deltaTime;
+            Quaternion rotation = Quaternion.LookRotation(dir);
+            transform.rotation = Quaternion.Slerp(transform.rotation, rotation, rotSpeed * Time.fixedDeltaTime);
         }
         else
         {
             enemyState = EnemyState.Idle;
             print("State: Return->Idle");
+            anim.SetBool("IsMoving", false);
         }
     }
 
@@ -169,12 +178,14 @@ public class Enemy : MonoBehaviour
         StartCoroutine(DamagedCoroutine());
         print("State: Frozen->Move");
         enemyState = EnemyState.Move;
+        anim.SetBool("IsMoving", true);
     }
 
     void Damaged()
     {
         enemyState = EnemyState.Frozen;
         print("State: Damaged->Frozen");
+        anim.SetTrigger("IsDamaged");
     }
 
     IEnumerator DamagedCoroutine()
@@ -190,7 +201,8 @@ public class Enemy : MonoBehaviour
 
     void Die()
     {
-        Destroy(gameObject);
+        Destroy(gameObject, 1f);
+        anim.SetBool("IsDead", true);
     }
 
     public void TakeDamage(float damage)
