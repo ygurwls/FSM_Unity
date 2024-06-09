@@ -1,24 +1,10 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class Enemy : MonoBehaviour
 {
-    enum EnemyState
-    {
-        Idle,
-        Move,
-        Attack,
-        BackToHome,
-        Frozen,
-        Damaged,
-        Die
-    }
-
-    // EnemyState변수
-    EnemyState enemyState;
     // Player의 Transform
-    Transform player;
+    public Transform player { get; private set; }
     // 적 인지 범위
     public float IdealRange = 8f;
     // 공격 사거리
@@ -29,180 +15,48 @@ public class Enemy : MonoBehaviour
     public float rotSpeed = 2f;
     // 공격 딜레이
     public float attackDelay = 1f;
-    // 누적 시간
-    float currTime = 0f;
     // 공격력
     public float atk = 10f;
     // 최대이동범위
     public float maxMoveDistance = 20f;
     // 초기 위치값
-    Vector3 originPos;
+    public Vector3 originPos { get; private set; }
     // 현재 체력
     float currentHealth = 100f;
     //
-    Animator anim;
+    public Animator anim { get; private set; }
 
-    // Start is called before the first frame update
+    // 현재 상태
+    IState currentState;
+
     void Start()
     {
-        enemyState = EnemyState.Idle;
-        
         player = GameObject.Find("Player").transform;
-
         originPos = transform.position;
-
         anim = GetComponent<Animator>();
+
+        currentState = new IdleState(this);
     }
 
-    // Update is called once per frame
     void Update()
     {
-        switch(enemyState)
-        {
-            case EnemyState.Idle:
-                Idle();
-                break;
-            case EnemyState.Move:
-                Move();
-                break;
-            case EnemyState.Attack:
-                Attack();
-                break;
-            case EnemyState.BackToHome:
-                BackToHome();
-                break;
-            case EnemyState.Frozen:
-                Frozen();
-                break;
-            case EnemyState.Damaged:
-                Damaged();
-                break;
-            case EnemyState.Die:
-                Die();
-                break;
-            default:
-                break;
-        }
-
+        currentState.Execute();
     }
 
-    void Idle()
+    public void TransitionState(IState newState)
     {
-        float dist = Vector3.Distance(transform.position, player.position);
-        if (dist < IdealRange)
+        if (currentState != null)
         {
-            enemyState = EnemyState.Move;
-            print("State: Idle->Move");
-            anim.SetBool("IsMoving", true);
-        }
-    }
-
-    void Move()
-    {
-        if(Vector3.Distance(transform.position, player.position) > maxMoveDistance)
-        {
-            enemyState = EnemyState.BackToHome;
-            print("State: Move->Return");
-        }
-
-        float dist = Vector3.Distance(transform.position, player.position);
-        if(dist < AttackRange)
-        {
-            enemyState = EnemyState.Attack;
-            print("State: Move->Attack");
-            anim.SetBool("IsAttack", true);
+            Debug.Log($"State Transition: {currentState.GetType().Name} -> {newState.GetType().Name}");
         }
         else
         {
-            Vector3 dir = player.position - transform.position;
-            dir.Normalize();
-
-            transform.position += dir * Speed * Time.deltaTime;
-
-            Quaternion rotation = Quaternion.LookRotation(dir);
-            transform.rotation = Quaternion.Slerp(transform.rotation, rotation, rotSpeed * Time.fixedDeltaTime);
+            Debug.Log($"Initial State: {newState.GetType().Name}");
         }
-    }
 
-    void Attack()
-    {
-        float dist = Vector3.Distance(transform.position, player.position);
-        if (dist < AttackRange)
-        {
-            currTime += Time.deltaTime;
-            if(currTime > attackDelay)
-            {
-                print("Attack");
-                if (player != null)
-                {
-                    PlayerController PC = player.GetComponent<PlayerController>();
-
-                    if (PC != null)
-                    {
-                        PC.TakeDamage(atk);
-                    }
-                    currTime = 0;
-                }
-            }
-        }
-        else
-        {
-            enemyState = EnemyState.Move;
-            print("State: Attack->Move");
-            anim.SetBool("IsAttack", false);
-        }
-    }
-
-    void BackToHome()
-    {
-        float dist = Vector3.Distance(transform.position, originPos);
-
-        if (dist > 0.1f)
-        {
-            Vector3 dir = originPos - transform.position;
-            dir.Normalize();
-            transform.position += dir * Speed * Time.deltaTime;
-            Quaternion rotation = Quaternion.LookRotation(dir);
-            transform.rotation = Quaternion.Slerp(transform.rotation, rotation, rotSpeed * Time.fixedDeltaTime);
-        }
-        else
-        {
-            enemyState = EnemyState.Idle;
-            print("State: Return->Idle");
-            anim.SetBool("IsMoving", false);
-        }
-    }
-
-    void Frozen()
-    {
-        StartCoroutine(DamagedCoroutine());
-        print("State: Frozen->Move");
-        enemyState = EnemyState.Move;
-        anim.SetBool("IsMoving", true);
-    }
-
-    void Damaged()
-    {
-        enemyState = EnemyState.Frozen;
-        print("State: Damaged->Frozen");
-        anim.SetTrigger("IsDamaged");
-    }
-
-    IEnumerator DamagedCoroutine()
-    {
-
-        float originalSpeed = Speed;
-        Speed = 0f;
-
-        yield return new WaitForSeconds(1f);
-
-        Speed = originalSpeed;
-    }
-
-    void Die()
-    {
-        Destroy(gameObject, 1f);
-        anim.SetBool("IsDead", true);
+        currentState.Exit();
+        currentState = newState;
+        currentState.Enter();
     }
 
     public void TakeDamage(float damage)
@@ -210,15 +64,11 @@ public class Enemy : MonoBehaviour
         currentHealth -= damage;
         if (currentHealth <= 0)
         {
-            print("State: AnyState -> Die");
-            Die();
+            TransitionState(new DieState(this));
         }
         else
         {
-            enemyState = EnemyState.Damaged;
-            print("State: AnyState -> Damaged");
-            print("EnemyCurrentHealth = " + currentHealth);
-            Damaged();
+            TransitionState(new DamagedState(this));
         }
     }
 
@@ -232,5 +82,263 @@ public class Enemy : MonoBehaviour
 
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(transform.position, maxMoveDistance);
+    }
+}
+
+// 상태 인터페이스
+public interface IState
+{
+    void Enter();
+    void Execute();
+    void Exit();
+}
+
+// 대기 상태
+public class IdleState : IState
+{
+    Enemy enemy;
+
+    public IdleState(Enemy enemy)
+    {
+        this.enemy = enemy;
+    }
+
+    public void Enter()
+    {
+
+    }
+
+    public void Execute()
+    {
+        float dist = Vector3.Distance(enemy.transform.position, enemy.player.position);
+        if (dist < enemy.IdealRange)
+        {
+            enemy.TransitionState(new MoveState(enemy));
+        }
+    }
+
+    public void Exit()
+    {
+       
+    }
+}
+
+// 이동 상태
+public class MoveState : IState
+{
+    Enemy enemy;
+
+    public MoveState(Enemy enemy)
+    {
+        this.enemy = enemy;
+    }
+
+    public void Enter()
+    {
+        enemy.anim.SetBool("IsMoving", true);
+    }
+
+    public void Execute()
+    {
+        if (Vector3.Distance(enemy.transform.position, enemy.player.position) > enemy.maxMoveDistance)
+        {
+            enemy.TransitionState(new BackToHomeState(enemy));
+        }
+
+        float dist = Vector3.Distance(enemy.transform.position, enemy.player.position);
+        if (dist < enemy.AttackRange)
+        {
+            enemy.TransitionState(new AttackState(enemy));
+        }
+        else
+        {
+            Vector3 dir = enemy.player.position - enemy.transform.position;
+            dir.Normalize();
+
+            enemy.transform.position += dir * enemy.Speed * Time.deltaTime;
+
+            Quaternion rotation = Quaternion.LookRotation(dir);
+            enemy.transform.rotation = Quaternion.Slerp(enemy.transform.rotation, rotation, enemy.rotSpeed * Time.fixedDeltaTime);
+        }
+    }
+
+    public void Exit()
+    {
+       
+    }
+}
+
+// 공격 상태
+public class AttackState : IState
+{
+    Enemy enemy;
+    float currTime = 0f;
+
+    public AttackState(Enemy enemy)
+    {
+        this.enemy = enemy;
+    }
+
+    public void Enter()
+    {
+        enemy.anim.SetBool("IsAttack", true);
+    }
+
+    public void Execute()
+    {
+        float dist = Vector3.Distance(enemy.transform.position, enemy.player.position);
+        if (dist < enemy.AttackRange)
+        {
+            currTime += Time.deltaTime;
+            if (currTime > enemy.attackDelay)
+            {
+                Debug.Log("Attack");
+                if (enemy.player != null)
+                {
+                    PlayerController PC = enemy.player.GetComponent<PlayerController>();
+
+                    if (PC != null)
+                    {
+                        PC.TakeDamage(enemy.atk);
+                    }
+                    currTime = 0;
+                }
+            }
+        }
+        else
+        {
+            enemy.TransitionState(new MoveState(enemy));
+        }
+    }
+
+    public void Exit()
+    {
+        enemy.anim.SetBool("IsAttack", false);
+    }
+}
+
+// 귀환 상태
+public class BackToHomeState : IState
+{
+    Enemy enemy;
+
+    public BackToHomeState(Enemy enemy)
+    {
+        this.enemy = enemy;
+    }
+
+    public void Enter()
+    {
+        
+    }
+
+    public void Execute()
+    {
+        float dist = Vector3.Distance(enemy.transform.position, enemy.originPos);
+
+        if (dist > 0.1f)
+        {
+            Vector3 dir = enemy.originPos - enemy.transform.position;
+            dir.Normalize();
+            enemy.transform.position += dir * enemy.Speed * Time.deltaTime;
+            Quaternion rotation = Quaternion.LookRotation(dir);
+            enemy.transform.rotation = Quaternion.Slerp(enemy.transform.rotation, rotation, enemy.rotSpeed * Time.fixedDeltaTime);
+        }
+        else
+        {
+            enemy.TransitionState(new IdleState(enemy));
+        }
+    }
+
+    public void Exit()
+    {
+        enemy.anim.SetBool("IsMoving", false);
+    }
+}
+
+// 얼음 상태
+public class FrozenState : IState
+{
+    Enemy enemy;
+
+    public FrozenState(Enemy enemy)
+    {
+        this.enemy = enemy;
+    }
+
+    public void Enter()
+    {
+        enemy.StartCoroutine(DamagedCoroutine());
+    }
+
+    public void Execute()
+    {
+        enemy.TransitionState(new MoveState(enemy));
+    }
+
+    public void Exit()
+    {
+        
+    }
+
+    IEnumerator DamagedCoroutine()
+    {
+        float originalSpeed = enemy.Speed;
+        enemy.Speed = 0f;
+
+        yield return new WaitForSeconds(1f);
+
+        enemy.Speed = originalSpeed;
+    }
+}
+public class DieState : IState
+{
+    Enemy enemy;
+
+    public DieState(Enemy enemy)
+    {
+        this.enemy = enemy;
+    }
+
+    public void Enter()
+    {
+        enemy.anim.SetBool("IsDead", true);
+    }
+
+    public void Execute()
+    {
+        UnityEngine.Object.Destroy(enemy.gameObject, 1f);
+    }
+
+    public void Exit()
+    {
+        
+    }
+}
+
+// 피격 상태
+public class DamagedState : IState
+{
+    Enemy enemy;
+
+    public DamagedState(Enemy enemy)
+    {
+        this.enemy = enemy;
+    }
+
+    public void Enter()
+    {
+        enemy.anim.SetTrigger("IsDamaged");
+        enemy.TransitionState(new FrozenState(enemy));
+    }
+
+    public void Execute()
+    {
+        
+    }
+
+    public void Exit()
+    {
+        
     }
 }
